@@ -129,8 +129,8 @@ class Dataset(torch.utils.data.Dataset):
 
 
 # Use the data loader.
-
-batch_size = 32
+'''
+batch_size = 16
 
 train_dataset = Dataset(train_df, path)
 train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
@@ -163,7 +163,8 @@ for i, (images, meta_data, labels) in enumerate(train_loader):
 XGB_data = pd.DataFrame(data=X)
 XGB_data['targets'] = y
 XGB_data.to_csv("XGB_train.csv", index=False)
-#XGB_data = pd.read_csv("XGB_train.csv")
+'''
+XGB_data = pd.read_csv("XGB_train.csv")
 
 X = np.array(XGB_data.values[:, :-1], np.float32)
 y = np.array(XGB_data['targets'].values, np.float32)
@@ -202,9 +203,9 @@ dval = xgb.DMatrix(X_val, label=y_val)
 param = {'max_depth': 16, 'eta': .05, 'objective': 'binary:logistic'}
 param['nthread'] = 8
 param['eval_metric'] = 'auc'
-param['subsample'] = .5
-param['gpu_id'] = 0
-param['tree_method'] = 'gpu_hist'
+#param['subsample'] = .75
+#param['gpu_id'] = 0
+#param['tree_method'] = 'gpu_hist'
 
 # specify validation set
 evallist = [(dval, 'eval')]
@@ -215,7 +216,7 @@ bst = xgb.train(param, dtrain, num_round, evals=evallist, early_stopping_rounds=
 
 
 # In[22]:
-
+batch_size=16
 valid_dataset = Dataset(val_df, path)
 valid_loader = torch.utils.data.DataLoader(dataset=valid_dataset,
                                            batch_size=batch_size)

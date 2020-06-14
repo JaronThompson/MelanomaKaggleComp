@@ -133,7 +133,7 @@ ENet = EfficientNet.from_pretrained('efficientnet-b0').to(device)
 
 # Hyper parameters
 num_epochs = 5
-batch_size = 64
+batch_size = 42
 learning_rate = 0.001
 
 # Convolutional neural network
