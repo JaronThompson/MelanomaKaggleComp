@@ -90,7 +90,10 @@ for feature in meta_features:
             encoder[category] = np.float(i)
 encoder['nan'] = np.nan
 
-transform = transforms.Compose([transforms.ToTensor()])
+transform = transforms.Compose([
+    #transforms.RandomResizedCrop(size=256, scale=(0.7, 1.0)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225])])
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, df, path_to_files):
@@ -161,13 +164,10 @@ for i, (images, meta_data, batch_image_names) in enumerate(test_loader):
 
 # In[8]:
 
-
 bst = xgb.Booster({'nthread': 4})  # init model
-bst.load_model('../Models/xgbNN.model')  # load data
-
+bst.load_model('../Models/xgbNN.model')  # load data\
 
 # In[9]:
-
 
 Dtest = xgb.DMatrix(X)
 predictions = bst.predict(Dtest)
@@ -175,14 +175,10 @@ predictions = bst.predict(Dtest)
 
 # In[10]:
 
-
 submission = pd.DataFrame()
 
 submission["image_name"] = image_names
 submission["target"] = predictions
 
-
 # In[11]:
-
-
-submission.to_csv("JT_submission_5.csv", index=False)
+submission.to_csv("JT_submission_256.csv", index=False)
