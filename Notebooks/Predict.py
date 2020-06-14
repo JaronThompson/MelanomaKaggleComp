@@ -38,9 +38,9 @@ print(device)
 # In[6]:
 
 
-alldata = pd.read_csv("../TrainTestDataFrames/train_concat.csv")
+alldata = pd.read_csv("../TrainTestDataFrames/marking.csv")
 test_df = pd.read_csv("../TrainTestDataFrames/test.csv")
-path = "../../data/test/test/"
+path = "../../data-512/512x512-test/512x512-test/"
 
 
 # In[7]:
@@ -65,9 +65,9 @@ class MyENet(nn.Module):
         return out
 
 # First, load the EfficientNet with pre-trained parameters
-ENet = EfficientNet.from_pretrained('efficientnet-b0').to(device)
-model = MyENet(ENet).to(device)
-model.load_state_dict(torch.load('../Models/ENetmodel.ckpt'), strict=False)
+model = EfficientNet.from_pretrained('efficientnet-b0').to(device)
+#model = MyENet(ENet).to(device)
+#model.load_state_dict(torch.load('../Models/ENetmodel.ckpt'), strict=False)
 
 
 # In[8]:
@@ -146,12 +146,12 @@ for i, (images, meta_data, batch_image_names) in enumerate(test_loader):
     images = images.to(device)
 
     # Forward pass
-    embed = model.embedding(images)
-    nn_pred = model.output(embed).detach().cpu().numpy()
-    embedding = embed.detach().cpu().numpy()
+    embed = model(images)
+    #nn_pred = model.output(embed).detach().cpu().numpy()
+    #embedding = embed.detach().cpu().numpy()
 
     # determine NN features for the set of images
-    batch_features = np.concatenate((embedding, meta_data.numpy(), nn_pred), axis=1)
+    batch_features = np.concatenate((embedding, meta_data.numpy()), axis=1)
 
     # append the dataset
     try:
@@ -165,7 +165,7 @@ for i, (images, meta_data, batch_image_names) in enumerate(test_loader):
 # In[8]:
 
 bst = xgb.Booster({'nthread': 4})  # init model
-bst.load_model('../Models/xgbNN.model')  # load data\
+bst.load_model('../Models/xgbENet.model')  # load data
 
 # In[9]:
 
@@ -180,5 +180,4 @@ submission = pd.DataFrame()
 submission["image_name"] = image_names
 submission["target"] = predictions
 
-# In[11]:
 submission.to_csv("JT_submission_256.csv", index=False)
