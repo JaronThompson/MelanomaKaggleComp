@@ -37,7 +37,7 @@ print(device)
 
 # In[3]:
 
-all = pd.read_csv("../TrainTestDataFrames/train_concat.csv")
+alldata = pd.read_csv("../TrainTestDataFrames/train_concat.csv")
 train_df = pd.read_csv("train_df.csv")
 val_df = pd.read_csv("val_df.csv")
 path = "../../data/train/train/"
@@ -80,7 +80,7 @@ meta_features = ['sex', 'age_approx', 'anatom_site_general_challenge']
 encoder = {}
 for feature in meta_features:
     # determine unique features
-    categories = np.unique(np.array(all[feature].values, str))
+    categories = np.unique(np.array(alldata[feature].values, str))
     for i, category in enumerate(categories):
         if category != 'nan':
             encoder[category] = np.float(i)
