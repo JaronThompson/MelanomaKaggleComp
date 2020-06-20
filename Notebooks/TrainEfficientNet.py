@@ -305,7 +305,7 @@ valid_loader = torch.utils.data.DataLoader(dataset=valid_dataset)
 
 # save losses from training
 num_epochs = 50
-batchsize  = 64
+batchsize  = 60
 
 train_roc = []
 val_roc   = []
