@@ -264,7 +264,7 @@ class MyDataLoader():
 
 
 # First, load the EfficientNet with pre-trained parameters
-ENet = EfficientNet.from_pretrained('efficientnet-b0').to(device)
+ENet = EfficientNet.from_pretrained('efficientnet-b1').to(device)
 
 
 # In[8]:
@@ -272,19 +272,25 @@ ENet = EfficientNet.from_pretrained('efficientnet-b0').to(device)
 
 # Convolutional neural network
 class MyENet(nn.Module):
-    def __init__(self, Net):
+    def __init__(self, ENet):
         super(MyENet, self).__init__()
-        self.Net = Net
-        self.output = nn.Sequential(
-            nn.Linear(1000, 1),
-            nn.Sigmoid())
+        # modify output layer of the pre-trained ENet
+        self.ENet = ENet
+        num_ftrs = self.ENet._fc.in_features
+        self.ENet._fc = nn.Linear(in_features=num_ftrs, out_features=256, bias=True)
+        # map Enet output to melanoma decision
+        self.output = nn.Sequential(nn.BatchNorm1d(256),
+                                    nn.LeakyReLU(),
+                                    nn.Dropout(p=0.2),
+                                    nn.Linear(256, 1),
+                                    nn.Sigmoid())
 
     def embedding(self, x):
-        out = self.Net(x)
+        out = self.ENet(x)
         return out
 
     def forward(self, x):
-        out = self.Net(x)
+        out = self.ENet(x)
         out = self.output(out)
         return out
 
@@ -297,6 +303,7 @@ model = MyENet(ENet).to(device)
 # Train the model
 # Use the prebuilt data loader.
 path = "../../data-512/512x512-dataset-melanoma/512x512-dataset-melanoma/"
+path_to_model = '../Models/ENETmodel_all.ckpt'
 
 # evaluate performance on validation data
 valid_dataset = ValidDataset(val_df, path)
@@ -391,16 +398,17 @@ for epoch in range(num_epochs):
     if val_roc_auc >= best_val:
         best_val = val_roc_auc
         patience = set_patience
-        torch.save(model.state_dict(), '../Models/ENETmodel_all.ckpt')
+        torch.save(model.state_dict(), path_to_model)
     else:
         patience -= 1
         if patience == 0:
             print('Early stopping. Best validation roc_auc: {:.3f}'.format(best_val))
-            model.load_state_dict(torch.load('../Models/ENETmodel_all.ckpt'), strict=False)
+            model.load_state_dict(torch.load(path_to_model), strict=False)
             break
 
-# Load best model
-model.load_state_dict(torch.load('../Models/ENETmodel_all.ckpt'))
+# Load best model if training did not stop early
+if patience > 0:
+    model.load_state_dict(torch.load(path_to_model))
 
 
 # In[10]:
@@ -497,7 +505,6 @@ plt.close()
 
 
 # In[14]:
-
 
 tn, fp, fn, tp = confusion_matrix(np.array(valid_targets, np.int), np.round(np.array(valid_predictions).ravel())).ravel()
 
