@@ -55,19 +55,25 @@ ENet = EfficientNet.from_pretrained('efficientnet-b0').to(device)
 
 # Convolutional neural network
 class MyENet(nn.Module):
-    def __init__(self, Net):
+    def __init__(self, ENet):
         super(MyENet, self).__init__()
-        self.Net = Net
-        self.output = nn.Sequential(
-            nn.Linear(1000, 1),
-            nn.Sigmoid())
+        # modify output layer of the pre-trained ENet
+        self.ENet = ENet
+        num_ftrs = self.ENet._fc.in_features
+        self.ENet._fc = nn.Linear(in_features=num_ftrs, out_features=256, bias=True)
+        # map Enet output to melanoma decision
+        self.output = nn.Sequential(nn.BatchNorm1d(256),
+                                    nn.LeakyReLU(),
+                                    nn.Dropout(p=0.2),
+                                    nn.Linear(256, 1),
+                                    nn.Sigmoid())
 
     def embedding(self, x):
-        out = self.Net(x)
+        out = self.ENet(x)
         return out
 
     def forward(self, x):
-        out = self.Net(x)
+        out = self.ENet(x)
         out = self.output(out)
         return out
 
@@ -572,4 +578,4 @@ print("\nXGBoost Stats:")
 print("Model accuracy: {:.2f}".format(accuracy))
 print("Model precision: {:.2f}".format(precision))
 print("Model recall: {:.2f}".format(recall))
-'''  
+'''
