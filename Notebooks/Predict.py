@@ -62,6 +62,7 @@ class MyENet(nn.Module):
         # map Enet output to melanoma decision
         self.output = nn.Sequential(nn.BatchNorm1d(256),
                                     nn.LeakyReLU(),
+                                    nn.Dropout(p=0.2),
                                     nn.Linear(256, 1),
                                     nn.Sigmoid())
 
