@@ -180,6 +180,40 @@ class ValidDataset(torch.utils.data.Dataset):
         # total size of your dataset.
         return self.df.shape[0]
 
+
+class SecondRoundDataset(torch.utils.data.Dataset):
+    def __init__(self, df, path_to_files):
+        # 1. Initialize file paths or a list of file names.
+        self.path = path_to_files
+        self.df = df
+
+    def __getitem__(self, index):
+        # 1. Read one data from file (e.g. using numpy.fromfile, PIL.Image.open).
+
+        # load X
+        img_name = self.df['image_id'].values[index]
+        img_path = self.path + img_name + ".jpg"
+        img = plt.imread(img_path)
+
+        # determine meta data
+        meta = self.df[meta_features].values[index]
+        meta_data = np.array([encoder[str(m)] for m in meta])
+
+        # load y
+        label = self.df["target"].values[index]
+        target = torch.tensor(label, dtype=torch.float32)
+
+        # 2. Preprocess the data (e.g. torchvision.Transform).
+        img = Image.fromarray(img)
+        #img = img.resize((256, 256))
+        img_processed = transform_round_2(img)
+        # 3. Return a data pair (e.g. image and label).
+        return img_processed, target
+
+    def __len__(self):
+        # total size of your dataset.
+        return self.df.shape[0]
+
 class MyDataLoader():
     def __init__(self, df, path, batchsize, min_balance=None):
         # store df, path, weights, ...
@@ -421,7 +455,7 @@ if patience > 0:
 # Training round 2 (Using unbalanced data + more noise)
 
 # evaluate performance on validation data
-train_dataset = ValidDataset(train_df, path)
+train_dataset = SecondRoundDataset(train_df, path)
 train_loader = torch.utils.data.DataLoader(dataset = train_dataset,
                                            batch_size = batchsize,
                                            shuffle = True)
