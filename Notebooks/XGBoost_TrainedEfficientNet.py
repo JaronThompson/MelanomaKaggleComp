@@ -146,7 +146,7 @@ class ValidDataset(torch.utils.data.Dataset):
 
 
 # Use the data loader.
-
+'''
 batch_size = 12
 path = "../../data-512/512x512-dataset-melanoma/512x512-dataset-melanoma/"
 
@@ -182,7 +182,8 @@ for i, (images, meta_data, labels) in enumerate(tqdm(train_loader)):
 XGB_data = pd.DataFrame(data=X)
 XGB_data['targets'] = y
 XGB_data.to_csv("XGB_ENET_train_all.csv", index=False)
-#XGB_data = pd.read_csv("XGB_ENET_train.csv")
+'''
+XGB_data = pd.read_csv("XGB_ENET_train_all.csv")
 
 X = np.array(XGB_data.values[:, :-1], np.float32)
 y = np.array(XGB_data['targets'].values, np.float32)
@@ -206,17 +207,13 @@ def make_weights(targets, nclasses=2):
 
     return np.array(weight)
 
+XGB_data = pd.read_csv("XGB_ENET_val_all.csv")
+Xval = np.array(XGB_data.values[:, :-1], np.float32)
+yval = np.array(XGB_data['targets'].values, np.float32)
 
-# In[10]:
+dtrain = xgb.DMatrix(X, label=y) #, weight=w)
+dval = xgb.DMatrix(Xval, label=yval)
 
-
-X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2)
-
-# weight positive examples more heavily
-w = make_weights(y_train)
-
-dtrain = xgb.DMatrix(X_train, label=y_train) #, weight=w)
-dval = xgb.DMatrix(X_val, label=y_val)
 
 # booster params
 param = {'max_depth': 16, 'eta': .05, 'objective': 'binary:logistic'}
@@ -248,76 +245,10 @@ bst.save_model("../Models/xgb_ENET_all.model")
 # prediction
 ypred = bst.predict(dval)
 
-fpr, tpr, _ = roc_curve(y_val, ypred)
-roc_auc = auc(fpr, tpr)
-
-plt.style.use('seaborn-colorblind')
-plt.rcParams.update({'font.size': 16,
-                     'legend.framealpha':1,
-                     'legend.edgecolor':'inherit'})
-plt.figure(figsize=(9, 6))
-
-lw = 2
-plt.plot(fpr, tpr,
-         lw=lw, label='ROC curve (area = %0.2f)' % roc_auc)
-plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
-plt.xlim([0.0, 1.0])
-plt.ylim([0.0, 1.05])
-plt.xlabel('False Positive Rate')
-plt.ylabel('True Positive Rate')
-plt.title('Receiver operating characteristic')
-plt.legend(loc="lower right")
-
-plt.tight_layout()
-#plt.show()
-plt.close()
-
-# In[13]:
-
-
-batch_size = 4
-valid_dataset = ValidDataset(val_df, path)
-valid_loader = torch.utils.data.DataLoader(dataset=valid_dataset,
-                                           batch_size=batch_size)
-
-model = model.eval()
-for i, (images, meta_data, labels) in enumerate(tqdm(valid_loader)):
-    images = images.to(device)
-
-    # Forward pass
-    embed = model.embedding(images)
-    nn_pred = model.output(embed).detach().cpu().numpy()
-    embedding = embed.detach().cpu().numpy()
-
-    # determine NN features for the set of images
-    batch_features = np.concatenate((embedding, meta_data.numpy(), nn_pred), axis=1)
-
-    # append the dataset
-    try:
-        Xval = np.concatenate((Xval, batch_features), 0)
-        yval = np.append(yval, labels.numpy())
-    except:
-        Xval = batch_features
-        yval = labels.numpy()
-
-XGB_data = pd.DataFrame(data=Xval)
-XGB_data['targets'] = yval
-XGB_data.to_csv("XGB_ENET_val_all.csv", index=False)
-
-XGB_data = pd.read_csv("XGB_ENET_val_all.csv")
-Xval = np.array(XGB_data.values[:, :-1], np.float32)
-yval = np.array(XGB_data['targets'].values, np.float32)
-
-
-# In[14]:
-
-
-dtest = xgb.DMatrix(Xval)
-ypred = bst.predict(dtest)
-
 fpr, tpr, _ = roc_curve(yval, ypred)
 roc_auc = auc(fpr, tpr)
 
+# determine NN features for the set of image
 plt.style.use('seaborn-colorblind')
 plt.rcParams.update({'font.size': 16,
                      'legend.framealpha':1,
