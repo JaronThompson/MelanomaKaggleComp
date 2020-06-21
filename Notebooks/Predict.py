@@ -194,13 +194,13 @@ predictions = bst.predict(Dtest)
 submission = pd.DataFrame()
 
 submission["image_name"] = image_names
-submission["target"] = predictions
+submission["target"] = X[:, -1] #predictions
 
 
 # In[21]:
 
 
-submission.to_csv("JT_submission_XGB.csv", index=False)
+submission.to_csv("JT_submission_CNN.csv", index=False)
 
 
 # In[22]:
