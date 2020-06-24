@@ -158,8 +158,8 @@ class TestDataset(torch.utils.data.Dataset):
         return self.df.shape[0]
 
 #%% set up training data
-'''
 batch_size = 12
+'''
 train_dataset = TrainDataset(train_df, train_path)
 train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
                                            batch_size=batch_size,
