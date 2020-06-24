@@ -53,9 +53,9 @@ train_df_negsample = train_df_neg.sample(n=int(train_df_pos.shape[0]))
 
 # concatenate negative and positive samples, then shuffle using .sample()
 #train_val_df = pd.concat((train_df_pos, train_df_negsample)).sample(frac=1)
-train_val_df = train_df_allsamples.sample(frac=1)
+train_val_df = train_df_allsamples.sample(frac=.5)
 
-train_val_split = .9
+train_val_split = .8
 n_train_val = train_val_df.shape[0]
 n_train = int(train_val_split*n_train_val)
 
@@ -319,12 +319,12 @@ class MyENet(nn.Module):
         # modify output layer of the pre-trained ENet
         self.ENet = ENet
         num_ftrs = self.ENet._fc.in_features
-        self.ENet._fc = nn.Linear(in_features=num_ftrs, out_features=256, bias=True)
+        self.ENet._fc = nn.Linear(in_features=num_ftrs, out_features=512, bias=True)
         # map Enet output to melanoma decision
-        self.output = nn.Sequential(nn.BatchNorm1d(256),
+        self.output = nn.Sequential(nn.BatchNorm1d(512),
                                     nn.LeakyReLU(),
-                                    nn.Dropout(p=0.2),
-                                    nn.Linear(256, 1),
+                                    nn.Dropout(p=0.4),
+                                    nn.Linear(512, 1),
                                     nn.Sigmoid())
 
     def embedding(self, x):
@@ -452,109 +452,6 @@ for epoch in range(num_epochs):
 if patience > 0:
     model.load_state_dict(torch.load(path_to_model))
 
-# Training round 2 (Using unbalanced data + more noise)
-
-# evaluate performance on validation data
-train_dataset = SecondRoundDataset(train_df, path)
-train_loader = torch.utils.data.DataLoader(dataset = train_dataset,
-                                           batch_size = batchsize,
-                                           shuffle = True)
-
-train_roc = []
-val_roc   = []
-losses    = []
-patience     = 3
-set_patience = 3
-# not sure if best_val should be reset?
-best_val     = 0
-
-# Loss and optimizer
-criterion = nn.BCELoss()
-learning_rate = 0.001
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-
-# scheduler reduces learning rate by factor of 10 when val auc does not improve
-scheduler = ReduceLROnPlateau(optimizer=optimizer, min_lr=3e-6, mode='max', patience=0, verbose=True)
-
-
-for epoch in range(num_epochs):
-    for j, (images, labels) in enumerate(train_loader):
-        # set up model for training
-        model = model.train()
-
-        images = images.to(device)
-        labels = torch.reshape(labels, [len(labels), 1])
-        labels = labels.to(device)
-
-        # Forward pass
-        outputs = model(images)
-        loss = criterion(outputs, labels)
-
-        # Backward and optimize
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        # store loss
-        losses.append(loss)
-
-        # Calculate ROC
-        predictions = outputs.detach().cpu().numpy().ravel()
-        targets = labels.cpu().numpy().ravel()
-
-        fpr, tpr, _ = roc_curve(np.array(targets, np.int), np.array(predictions).ravel())
-        train_roc_auc = auc(fpr, tpr)
-        train_roc.append(train_roc_auc)
-
-        # Calculate balance
-        balance = np.sum(targets) / len(targets)
-
-        print ('Epoch [{}/{}], Balance {:.2f}, Loss: {:.4f}, Train ROC AUC: {:.4f}'
-               .format(epoch+1, num_epochs, balance, loss.item(), train_roc_auc))
-
-    # prep model for evaluation
-    valid_predictions = []
-    valid_targets = []
-    model.eval()
-    with torch.no_grad():
-        for j, (images, labels) in enumerate(valid_loader):
-            images = images.to(device)
-
-            labels = torch.reshape(labels, [len(labels), 1])
-            labels = labels.to(device)
-
-            # Forward pass
-            outputs = model(images)
-
-            # Calculate val ROC
-            valid_predictions += list(outputs.detach().cpu().numpy().ravel())
-            valid_targets += list(labels.cpu().numpy().ravel())
-
-    fpr, tpr, _ = roc_curve(np.array(valid_targets, np.int), np.array(valid_predictions).ravel())
-    val_roc_auc = auc(fpr, tpr)
-    val_roc.append(val_roc_auc)
-
-    print ('\nEpoch [{}/{}], Val ROC AUC: {:.4f}\n'.format(epoch+1, num_epochs, val_roc_auc))
-
-    # learning rate is reduced if val roc doesn't improve
-    scheduler.step(val_roc_auc)
-
-    if val_roc_auc >= best_val:
-        best_val = val_roc_auc
-        patience = set_patience
-        torch.save(model.state_dict(), path_to_model)
-    else:
-        patience -= 1
-        if patience == 0:
-            print('Early stopping. Best validation roc_auc: {:.3f}'.format(best_val))
-            model.load_state_dict(torch.load(path_to_model), strict=False)
-            break
-
-# Load best model if training did not stop early
-if patience > 0:
-    model.load_state_dict(torch.load(path_to_model))
-
-# In[10]:
 
 '''
 plt.style.use('seaborn-colorblind')
