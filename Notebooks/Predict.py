@@ -158,6 +158,7 @@ class TestDataset(torch.utils.data.Dataset):
         return self.df.shape[0]
 
 #%% set up training data
+'''
 batch_size = 12
 train_dataset = TrainDataset(train_df, train_path)
 train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
@@ -187,6 +188,10 @@ for i, (images, meta_data, labels) in enumerate(tqdm(train_loader)):
 XGB_data = pd.DataFrame(data=X)
 XGB_data['targets'] = y
 XGB_data.to_csv("XGB_ENET_train_all.csv", index=False)
+'''
+XGB_data = pd.read_csv("XGB_ENET_train_all.csv")
+X = np.array(XGB_data.values[:, :-2], np.float32)
+y = np.array(XGB_data['targets'].values, np.float32)
 
 # Get stats for normalizing training and testing data
 mean_X = np.nanmean(X, 0)
@@ -204,7 +209,7 @@ test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
 
 model = model.eval()
 for i, (images, meta_data, batch_image_names) in enumerate(tqdm(test_loader)):
-    
+
     images = images.to(device)
 
     # Forward pass
@@ -213,7 +218,7 @@ for i, (images, meta_data, batch_image_names) in enumerate(tqdm(test_loader)):
     embedding = embed.detach().cpu().numpy()
 
     # determine NN features for the set of images
-    batch_features = np.concatenate((embedding, meta_data.numpy(), nn_pred), axis=1)
+    batch_features = np.concatenate((embedding, meta_data.numpy()), axis=1)
 
     # append the dataset
     try:
@@ -300,11 +305,11 @@ for i, (train_index, val_index) in enumerate(skf.split(X_train_std, y)):
 submission = pd.DataFrame()
 submission["image_name"] = image_names
 submission["target"] = predictions
-submission.to_csv("JT_submission.csv", index=False)
+submission.to_csv("JT_submission_meta.csv", index=False)
 
 #%% Estimate score based on OOF predictions
 
-tn, fp, fn, tp = confusion_matrix(y,  oof).ravel()
+tn, fp, fn, tp = confusion_matrix(y, np.round(oof)).ravel()
 
 accuracy = (tp + tn) / len(y)
 # precision is the fraction of correctly identified positive samples
@@ -321,4 +326,4 @@ print("Model precision: {:.2f}".format(precision))
 print("Model recall: {:.2f}".format(recall))
 
 print("\nConfusion Matrix: ")
-print(confusion_matrix(y,  oof))
+print(confusion_matrix(y,  np.round(oof)))
