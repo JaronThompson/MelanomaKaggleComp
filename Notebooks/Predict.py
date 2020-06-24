@@ -1,9 +1,3 @@
-
-# coding: utf-8
-
-# In[1]:
-
-
 import numpy as np
 import pandas as pd
 #import pydicom
@@ -19,7 +13,7 @@ from skimage.transform import resize
 from sklearn.metrics import confusion_matrix, roc_curve, auc
 
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.metrics import accuracy_score, confusion_matrix, roc_curve, auc
 
 import xgboost as xgb
@@ -27,28 +21,23 @@ from efficientnet_pytorch import EfficientNet
 
 from tqdm import tqdm
 
-
-# In[2]:
-
+#%%
 
 # Device configuration (GPU can be enabled in settings)
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 #device = 'cpu'
 print(device)
 
+#%%
 
-# In[3]:
-
-
-alldata = pd.read_csv("../TrainTestDataFrames/marking.csv")
+train_df = pd.read_csv("../TrainTestDataFrames/marking.csv")
 test_df = pd.read_csv("../TrainTestDataFrames/test.csv")
-path = "../../data-512/512x512-test/512x512-test/"
 
+train_path = "../../data-512/512x512-dataset-melanoma/512x512-dataset-melanoma/"
+test_path  = "../../data-512/512x512-test/512x512-test/"
 
-# In[4]:
+#%% First, load the EfficientNet with pre-trained parameters
 
-
-# First, load the EfficientNet with pre-trained parameters
 ENet = EfficientNet.from_pretrained('efficientnet-b0').to(device)
 
 # Convolutional neural network
@@ -58,12 +47,11 @@ class MyENet(nn.Module):
         # modify output layer of the pre-trained ENet
         self.ENet = ENet
         num_ftrs = self.ENet._fc.in_features
-        self.ENet._fc = nn.Linear(in_features=num_ftrs, out_features=256, bias=True)
+        self.ENet._fc = nn.Linear(in_features=num_ftrs, out_features=512, bias=True)
         # map Enet output to melanoma decision
-        self.output = nn.Sequential(nn.BatchNorm1d(256),
+        self.output = nn.Sequential(nn.BatchNorm1d(512),
                                     nn.LeakyReLU(),
-                                    nn.Dropout(p=0.2),
-                                    nn.Linear(256, 1),
+                                    nn.Linear(512, 1),
                                     nn.Sigmoid())
 
     def embedding(self, x):
@@ -78,16 +66,9 @@ class MyENet(nn.Module):
 model = MyENet(ENet).to(device)
 # Load best model
 model.load_state_dict(torch.load('../Models/ENETmodel_all.ckpt'))
+model = model.eval()
 
-
-# In[5]:
-
-
-test_df.head()
-
-
-# In[6]:
-
+#%%
 
 meta_features = ['sex', 'age_approx', 'anatom_site_general_challenge']
 
@@ -100,14 +81,22 @@ for feature in meta_features:
             encoder[category] = np.float(i)
 encoder['nan'] = np.nan
 
+# train transform adds noise
+train_transform = transforms.Compose([
+    transforms.RandomRotation(degrees=5),
+    transforms.ColorJitter(brightness=32. / 255.,saturation=0.5),
+    transforms.RandomResizedCrop(size=256, scale=(0.5, 1.0), ratio=(0.8, 1.2)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225])])
+
 # no flip or rotation for test/validation data
-transform = transforms.Compose([
+test_transform = transforms.Compose([
     transforms.RandomResizedCrop(size=256, scale=(1.0, 1.0), ratio=(1.0, 1.0)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225])
 ])
 
-class Dataset(torch.utils.data.Dataset):
+class TrainDataset(torch.utils.data.Dataset):
     def __init__(self, df, path_to_files):
         # 1. Initialize file paths or a list of file names.
         self.path = path_to_files
@@ -126,13 +115,40 @@ class Dataset(torch.utils.data.Dataset):
         meta_data = np.array([encoder[str(m)] for m in meta])
 
         # load y
-        #label = self.df["target"].values[index]
-        #target = torch.tensor(label, dtype=torch.float32)
+        label = self.df["target"].values[index]
+        target = torch.tensor(label, dtype=torch.float32)
 
         # 2. Preprocess the data (e.g. torchvision.Transform).
         img = Image.fromarray(img)
-        #img = img.resize((256, 256))
-        img_processed = transform(img)
+        img_processed = train_transform(img)
+        # 3. Return a data pair (e.g. image and label).
+        return img_processed, meta_data, target
+
+    def __len__(self):
+        # total size of your dataset.
+        return self.df.shape[0]
+
+class TestDataset(torch.utils.data.Dataset):
+    def __init__(self, df, path_to_files):
+        # 1. Initialize file paths or a list of file names.
+        self.path = path_to_files
+        self.df = df
+
+    def __getitem__(self, index):
+        # 1. Read one data from file (e.g. using numpy.fromfile, PIL.Image.open).
+
+        # load X
+        img_name = self.df['image_name'].values[index]
+        img_path = self.path + img_name + ".jpg"
+        img = plt.imread(img_path)
+
+        # determine meta data
+        meta = self.df[meta_features].values[index]
+        meta_data = np.array([encoder[str(m)] for m in meta])
+
+        # 2. Preprocess the data (e.g. torchvision.Transform).
+        img = Image.fromarray(img)
+        img_processed = test_transform(img)
         # 3. Return a data pair (e.g. image and label).
         return img_processed, meta_data, img_name
 
@@ -140,21 +156,54 @@ class Dataset(torch.utils.data.Dataset):
         # total size of your dataset.
         return self.df.shape[0]
 
+#%% set up training data
+batch_size = 12
+train_dataset = TrainDataset(train_df, train_path)
+train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
+                                           batch_size=batch_size
+                                           shuffle=True)
 
-# In[7]:
+for i, (images, meta_data, labels) in enumerate(tqdm(train_loader)):
+    images = images.to(device)
 
+    # Forward pass
+    embed = model.embedding(images)
+    nn_pred = model.output(embed).detach().cpu().numpy()
+    embedding = embed.detach().cpu().numpy()
 
-test_dataset = Dataset(test_df, path)
+    # determine NN features for the set of images
+    batch_features = np.concatenate((embedding, meta_data, nn_pred), axis=1)
 
-batch_size = 8
+    # append the dataset
+    try:
+        X = np.concatenate((X, batch_features), 0)
+        y = np.append(y, labels.numpy())
+    except:
+        X = batch_features
+        y = labels.numpy()
+
+# Save X and y in pandas dataframe just in case
+XGB_data = pd.DataFrame(data=X)
+XGB_data['targets'] = y
+XGB_data.to_csv("XGB_ENET_train_all.csv", index=False)
+
+# Get stats for normalizing training and testing data
+mean_X = np.nanmean(X, 0)
+std_X = np.nanstd(X, 0)
+
+# standardize training data set
+X_train_std = (X - mean_X) / std_X
+
+#%% set up test data
+
+test_dataset = TestDataset(test_df, test_path)
 test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
                                           batch_size=batch_size,
                                           shuffle=False)
 
 model = model.eval()
 for i, (images, meta_data, batch_image_names) in enumerate(tqdm(test_loader)):
-
-
+    
     images = images.to(device)
 
     # Forward pass
@@ -167,60 +216,108 @@ for i, (images, meta_data, batch_image_names) in enumerate(tqdm(test_loader)):
 
     # append the dataset
     try:
-        X = np.concatenate((X, batch_features), 0)
+        X_test = np.concatenate((X_test, batch_features), 0)
         image_names = np.append(image_names, batch_image_names)
     except:
-        X = batch_features
+        X_test = batch_features
         image_names = np.array(batch_image_names)
 
+X_test_std = (X_test - mean_X) / std_X
 
-# In[8]:
+#%% Define functions for fitting xgb model
 
+# weight positive examples more heavily
+def make_weights(targets):
+    nclasses = len(np.unique(targets))
+    count = [0] * nclasses
+    for label in targets:
+        count[np.int(label)] += 1
+    weight_per_class = [0.] * nclasses
+    N = float(sum(count))
+    for i in range(nclasses):
+        weight_per_class[i] = N/float(count[i])
+    weight = [0] * len(targets)
+    for idx, label in enumerate(targets):
+        weight[idx] = weight_per_class[np.int(label)]
 
-bst = xgb.Booster({'nthread': 8})  # init model
-bst.load_model('../Models/xgb_ENET_all.model')  # load data
+    return np.array(weight)
 
+# define function to fit and return xgboost model
+def fit_xgboost(X_train, y_train, X_val, y_val):
 
-# In[9]:
+    # weight positive examples more heavily
+    w = make_weights(y_train)
 
+    dtrain = xgb.DMatrix(X_train, label=y_train) #, weight=w)
+    dval = xgb.DMatrix(X_val, label=y_val)
 
-Dtest = xgb.DMatrix(X)
-predictions = bst.predict(Dtest)
+    # booster params
+    param = {'n_estimators':5000,
+            'max_depth':16,
+            'learning_rate':0.02,
+            'subsample':0.8,
+            'eval_metric':'auc',
+            'objective': 'binary:logistic',
+            'nthread': 8}
 
+    # specify validation set
+    evallist = [(dval, 'eval')]
 
-# In[20]:
+    # Training
+    num_round = 5000
+    bst = xgb.train(param, dtrain, num_round, evals=evallist, early_stopping_rounds=50)
 
+    return bst
+
+#%% Train kfolds and test
+
+n_splits = 5
+skf = StratifiedKFold(n_splits, shuffle=True)
+skf.get_n_splits(X_train_std, y)
+
+# define "out of fold" set of predictions, represents validation performance
+oof = np.zeros(len(X_train_std))
+predictions = np.zeros(len(X_test_std))
+
+for i, (train_index, val_index) in enumerate(skf.split(X_train_std, y)):
+
+    # get data partitions for Xtrain and Xval
+    X_train, X_val = X_train_std[train_index], X_train_std[val_index]
+    y_train, y_val = y[train_index], y[val_index]
+
+    # train xgboost
+    bst = fit_xgboost(X_train, y_train, X_val, y_val)
+
+    # save out of fold predictions
+    oof[val_index] += bst.predict(xgb.DMatrix(X_val)))
+
+    # save current model predictions on the true validation set
+    predictions += bst.predict(xgb.DMatrix(X_test_std)) / skf.n_splits
+
+#%% Make submission file
 
 submission = pd.DataFrame()
-
 submission["image_name"] = image_names
-submission["target"] = X[:, -1] #predictions
+submission["target"] = predictions
+submission.to_csv("JT_submission.csv", index=False)
 
+#%% Estimate score based on OOF predictions
 
-# In[21]:
+tn, fp, fn, tp = confusion_matrix(y,  oof).ravel()
 
+accuracy = (tp + tn) / len(y)
+# precision is the fraction of correctly identified positive samples
+# precision asks:"Of all the samples identified as positives, how many were correct?"
+precision = tp / (tp + fp)
+# recall is the ability of the model to identify positive samples
+# recall asks:"Of all the positive samples in the dataset, how many were identified by the model?"
+recall = tp / (tp + fn)
 
-submission.to_csv("JT_submission_CNN.csv", index=False)
+print("Out Of Fold stats:")
 
+print("Model accuracy: {:.2f}".format(accuracy))
+print("Model precision: {:.2f}".format(precision))
+print("Model recall: {:.2f}".format(recall))
 
-# In[22]:
-
-'''
-submission.head(10)
-
-
-# In[23]:
-
-
-plt.style.use('seaborn-colorblind')
-plt.rcParams.update({'font.size': 16,
-                     'legend.framealpha':1,
-                     'legend.edgecolor':'inherit'})
-plt.figure(figsize=(9, 6))
-
-plt.hist(predictions, label='XGBoost')
-plt.hist(X[:, -1], label='CNN', alpha=.5)
-plt.hist(X[:, -1]*(1/2) + predictions*(1/2), label='XGB CNN', alpha=.5)
-plt.legend()
-plt.show()
-'''
+print("\nConfusion Matrix: ")
+print(confusion_matrix(y,  oof))
