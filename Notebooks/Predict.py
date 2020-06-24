@@ -51,6 +51,7 @@ class MyENet(nn.Module):
         # map Enet output to melanoma decision
         self.output = nn.Sequential(nn.BatchNorm1d(512),
                                     nn.LeakyReLU(),
+                                    nn.Dropout(p=0.4),
                                     nn.Linear(512, 1),
                                     nn.Sigmoid())
 
@@ -75,7 +76,7 @@ meta_features = ['sex', 'age_approx', 'anatom_site_general_challenge']
 encoder = {}
 for feature in meta_features:
     # determine unique features
-    categories = np.unique(np.array(alldata[feature].values, str))
+    categories = np.unique(np.array(train_df[feature].values, str))
     for i, category in enumerate(categories):
         if category != 'nan':
             encoder[category] = np.float(i)
@@ -106,7 +107,7 @@ class TrainDataset(torch.utils.data.Dataset):
         # 1. Read one data from file (e.g. using numpy.fromfile, PIL.Image.open).
 
         # load X
-        img_name = self.df['image_name'].values[index]
+        img_name = self.df['image_id'].values[index]
         img_path = self.path + img_name + ".jpg"
         img = plt.imread(img_path)
 
@@ -160,7 +161,7 @@ class TestDataset(torch.utils.data.Dataset):
 batch_size = 12
 train_dataset = TrainDataset(train_df, train_path)
 train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
-                                           batch_size=batch_size
+                                           batch_size=batch_size,
                                            shuffle=True)
 
 for i, (images, meta_data, labels) in enumerate(tqdm(train_loader)):
@@ -289,7 +290,7 @@ for i, (train_index, val_index) in enumerate(skf.split(X_train_std, y)):
     bst = fit_xgboost(X_train, y_train, X_val, y_val)
 
     # save out of fold predictions
-    oof[val_index] += bst.predict(xgb.DMatrix(X_val)))
+    oof[val_index] += bst.predict(xgb.DMatrix(X_val))
 
     # save current model predictions on the true validation set
     predictions += bst.predict(xgb.DMatrix(X_test_std)) / skf.n_splits
