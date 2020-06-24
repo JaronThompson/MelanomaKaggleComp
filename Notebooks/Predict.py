@@ -190,7 +190,7 @@ XGB_data['targets'] = y
 XGB_data.to_csv("XGB_ENET_train_all.csv", index=False)
 '''
 XGB_data = pd.read_csv("XGB_ENET_train_all.csv")
-X = np.array(XGB_data.values[:, :-2], np.float32)
+X = np.array(XGB_data.values[:, :-1], np.float32)
 y = np.array(XGB_data['targets'].values, np.float32)
 
 # Get stats for normalizing training and testing data
@@ -218,7 +218,7 @@ for i, (images, meta_data, batch_image_names) in enumerate(tqdm(test_loader)):
     embedding = embed.detach().cpu().numpy()
 
     # determine NN features for the set of images
-    batch_features = np.concatenate((embedding, meta_data.numpy()), axis=1)
+    batch_features = np.concatenate((embedding, meta_data.numpy(), nn_pred), axis=1)
 
     # append the dataset
     try:
@@ -254,7 +254,7 @@ def fit_xgboost(X_train, y_train, X_val, y_val):
     # weight positive examples more heavily
     w = make_weights(y_train)
 
-    dtrain = xgb.DMatrix(X_train, label=y_train) #, weight=w)
+    dtrain = xgb.DMatrix(X_train, label=y_train, weight=w)
     dval = xgb.DMatrix(X_val, label=y_val)
 
     # booster params
