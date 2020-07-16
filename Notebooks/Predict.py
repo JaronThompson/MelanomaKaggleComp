@@ -309,6 +309,8 @@ submission.to_csv("JT_submission_meta.csv", index=False)
 
 #%% Estimate score based on OOF predictions
 
+fpr, tpr, _ = roc_curve(y, oof)
+roc_auc = auc(fpr, tpr)
 tn, fp, fn, tp = confusion_matrix(y, np.round(oof)).ravel()
 
 accuracy = (tp + tn) / len(y)
@@ -321,6 +323,7 @@ recall = tp / (tp + fn)
 
 print("Out Of Fold stats:")
 
+print("OOF ROC AUC: {:.3f}").format(roc_auc)
 print("Model accuracy: {:.2f}".format(accuracy))
 print("Model precision: {:.2f}".format(precision))
 print("Model recall: {:.2f}".format(recall))
